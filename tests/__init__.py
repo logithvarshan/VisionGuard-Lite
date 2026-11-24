@@ -1,0 +1,3 @@
+"""
+VisionGuard Lite - Tests Package
+"""
