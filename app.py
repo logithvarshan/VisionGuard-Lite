@@ -161,24 +161,34 @@ def export_events():
     import csv
     import io
     import os
-    import re
+    from datetime import datetime
 
     date_filter = request.args.get("date")
-    if date_filter:
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_filter):
-            return jsonify({"success": False, "error": "Invalid date format. Expected YYYY-MM-DD"}), 400
 
-    output = io.StringIO()
+    if date_filter:
+        try:
+            parsed_date = datetime.strptime(date_filter, "%Y-%m-%d")
+            if parsed_date.strftime("%Y-%m-%d") != date_filter:
+                raise ValueError
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Invalid date. Expected a real date in YYYY-MM-DD format."
+            }), 400
+
+    output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(["timestamp", "event_type", "duration_seconds", "details"])
 
     if os.path.exists(config.EVENT_LOG_FILE):
-        with open(config.EVENT_LOG_FILE, mode="r", encoding="utf-8") as f:
+        with open(config.EVENT_LOG_FILE, mode="r", encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                ts = row.get("timestamp", "")
-                if date_filter and not ts.startswith(date_filter):
+                timestamp = row.get("timestamp", "")
+
+                if date_filter and not timestamp.startswith(date_filter):
                     continue
+
                 writer.writerow([
                     row.get("timestamp", ""),
                     row.get("event_type", ""),
@@ -186,7 +196,11 @@ def export_events():
                     row.get("details", "")
                 ])
 
-    filename = f"presence_events_{date_filter.replace('-', '')}.csv" if date_filter else "presence_events_all.csv"
+    filename = (
+        f"presence_events_{date_filter.replace('-', '')}.csv"
+        if date_filter else "presence_events_all.csv"
+    )
+
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
@@ -194,18 +208,68 @@ def export_events():
 
 @app.route("/api/export/sessions", methods=["GET"])
 def export_sessions():
-    """Exports session history CSV."""
+    """Exports session history CSV, optionally filtered by session start date."""
+    import csv
+    import io
     import os
+    from datetime import datetime
+
+    date_filter = request.args.get("date")
+
+    if date_filter:
+        try:
+            parsed_date = datetime.strptime(date_filter, "%Y-%m-%d")
+            if parsed_date.strftime("%Y-%m-%d") != date_filter:
+                raise ValueError
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error": "Invalid date. Expected a real date in YYYY-MM-DD format."
+            }), 400
 
     if not os.path.exists(config.SESSION_LOG_FILE):
-        content = "session_id,start_time,end_time,duration_seconds,present_seconds,absent_seconds,status\n"
-    else:
+        content = (
+            "session_id,start_time,end_time,duration_seconds,"
+            "present_seconds,absent_seconds,status\n"
+        )
+    elif not date_filter:
         with open(config.SESSION_LOG_FILE, mode="r", encoding="utf-8") as f:
             content = f.read()
+    else:
+        output = io.StringIO(newline="")
+
+        with open(config.SESSION_LOG_FILE, mode="r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+
+            if reader.fieldnames:
+                writer = csv.DictWriter(
+                    output,
+                    fieldnames=reader.fieldnames,
+                    extrasaction="ignore"
+                )
+                writer.writeheader()
+
+                for row in reader:
+                    start_time = row.get("start_time", "")
+                    if start_time.startswith(date_filter):
+                        writer.writerow(row)
+            else:
+                output.write(
+                    "session_id,start_time,end_time,duration_seconds,"
+                    "present_seconds,absent_seconds,status\n"
+                )
+
+        content = output.getvalue()
+
+    filename = (
+        f"sessions_history_{date_filter.replace('-', '')}.csv"
+        if date_filter else "sessions_history.csv"
+    )
 
     response = Response(content, mimetype="text/csv")
-    response.headers["Content-Disposition"] = 'attachment; filename="sessions_history.csv"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
 
 
 if __name__ == "__main__":

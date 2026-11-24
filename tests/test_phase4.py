@@ -292,37 +292,112 @@ def test_api_break_and_analytics_endpoints():
     print(f"[PASS] GET /api/sessions returned 200 with {len(res.json['sessions'])} sessions.")
 
 
+
 def test_csv_export_endpoints():
-    print("\n--- Test 6: CSV Export Endpoints & Date Validation ---")
+    print("\n--- Test 6: CSV Export Endpoints & Date Filtering ---")
+
+    import csv
+    import io
+    import os
+    import tempfile
+    import config
+
     client = app.test_client()
 
-    # 1. /api/export/events (All)
-    res_events = client.get("/api/export/events")
-    assert res_events.status_code == 200
-    assert "text/csv" in res_events.headers["Content-Type"]
-    assert "attachment" in res_events.headers["Content-Disposition"]
-    assert b"timestamp,event_type,duration_seconds,details" in res_events.data
-    print("[PASS] GET /api/export/events returned valid CSV file attachment.")
+    original_event_path = config.EVENT_LOG_FILE
+    original_session_path = config.SESSION_LOG_FILE
 
-    # 2. /api/export/events with date filter
-    res_filtered = client.get("/api/export/events?date=2026-11-24")
-    assert res_filtered.status_code == 200
-    assert "presence_events_20261124.csv" in res_filtered.headers["Content-Disposition"]
-    print("[PASS] GET /api/export/events?date=YYYY-MM-DD returned filtered attachment.")
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            event_path = os.path.join(temp_dir, "events.csv")
+            session_path = os.path.join(temp_dir, "sessions.csv")
 
-    # 3. Date validation check (Invalid date format)
-    res_invalid = client.get("/api/export/events?date=invalid-date")
-    assert res_invalid.status_code == 400
-    assert res_invalid.json["success"] is False
-    print("[PASS] Date validation: Invalid date format safely returned HTTP 400.")
+            config.EVENT_LOG_FILE = event_path
+            config.SESSION_LOG_FILE = session_path
 
-    # 4. /api/export/sessions
-    res_sess = client.get("/api/export/sessions")
-    assert res_sess.status_code == 200
-    assert "text/csv" in res_sess.headers["Content-Type"]
-    assert "sessions_history.csv" in res_sess.headers["Content-Disposition"]
-    assert b"session_id,start_time,end_time" in res_sess.data
-    print("[PASS] GET /api/export/sessions returned valid CSV file attachment.")
+            # Create sample event records for two dates.
+            event_rows = [
+                ["timestamp", "event_type", "duration_seconds", "details"],
+                ["2026-11-24 10:00:00", "PRESENT", "60", "First day"],
+                ["2026-11-25 11:00:00", "ABSENT", "30", "Second day"]
+            ]
+
+            with open(event_path, "w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerows(event_rows)
+
+            # Create sample session records for two dates.
+            session_rows = [
+                ["session_id", "start_time", "end_time", "duration_seconds",
+                 "present_seconds", "absent_seconds", "status"],
+                ["SES_TEST_1", "2026-11-24 10:00:00", "2026-11-24 11:00:00",
+                 "3600", "3000", "600", "COMPLETED"],
+                ["SES_TEST_2", "2026-11-25 12:00:00", "2026-11-25 13:00:00",
+                 "3600", "3200", "400", "COMPLETED"]
+            ]
+
+            with open(session_path, "w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerows(session_rows)
+
+            # Save original file contents to verify they remain unchanged.
+            original_events = open(event_path, "rb").read()
+            original_sessions = open(session_path, "rb").read()
+
+            # 1. Export all events.
+            res = client.get("/api/export/events")
+            assert res.status_code == 200
+            assert "text/csv" in res.headers["Content-Type"]
+            assert "attachment" in res.headers["Content-Disposition"]
+            assert b"timestamp,event_type,duration_seconds,details" in res.data
+            print("[PASS] All-events CSV export returned a valid attachment.")
+
+            # 2. Filter events by date.
+            res = client.get("/api/export/events?date=2026-11-24")
+            assert res.status_code == 200
+            assert "presence_events_20261124.csv" in res.headers["Content-Disposition"]
+
+            event_data = list(csv.DictReader(io.StringIO(res.get_data(as_text=True))))
+            assert len(event_data) == 1
+            assert event_data[0]["details"] == "First day"
+            assert event_data[0]["timestamp"].startswith("2026-11-24")
+            print("[PASS] Event export contains only records from the requested date.")
+
+            # 3. Reject invalid date formats and impossible calendar dates.
+            for invalid_date in ["invalid-date", "2026-99-45", "2026-1-1"]:
+                for endpoint in ["/api/export/events", "/api/export/sessions"]:
+                    res = client.get(f"{endpoint}?date={invalid_date}")
+                    assert res.status_code == 400
+                    assert res.json["success"] is False
+
+            print("[PASS] Both endpoints reject invalid and impossible dates.")
+
+            # 4. Export all sessions.
+            res = client.get("/api/export/sessions")
+            assert res.status_code == 200
+            assert "text/csv" in res.headers["Content-Type"]
+            assert "sessions_history.csv" in res.headers["Content-Disposition"]
+            assert b"session_id,start_time,end_time" in res.data
+            print("[PASS] All-sessions CSV export returned a valid attachment.")
+
+            # 5. Filter sessions by start date.
+            res = client.get("/api/export/sessions?date=2026-11-24")
+            assert res.status_code == 200
+            assert "sessions_history_20261124.csv" in res.headers["Content-Disposition"]
+
+            session_data = list(csv.DictReader(io.StringIO(res.get_data(as_text=True))))
+            assert len(session_data) == 1
+            assert session_data[0]["session_id"] == "SES_TEST_1"
+            assert session_data[0]["start_time"].startswith("2026-11-24")
+            print("[PASS] Session export filters correctly using start_time.")
+
+            # 6. Confirm the original CSV files were not modified.
+            assert open(event_path, "rb").read() == original_events
+            assert open(session_path, "rb").read() == original_sessions
+            print("[PASS] Original event and session CSV files remain unchanged.")
+
+    finally:
+        config.EVENT_LOG_FILE = original_event_path
+        config.SESSION_LOG_FILE = original_session_path
+
 
 
 def test_memory_footprint():
