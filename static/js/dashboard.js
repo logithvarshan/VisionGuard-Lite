@@ -1,3 +1,4 @@
+
 /**
  * VisionGuard Lite - Dashboard Client Controller
  * Pure vanilla JavaScript: Zero external dependencies.
@@ -37,7 +38,6 @@ const analyticFocusRatio = document.getElementById("analytic-focus-ratio");
 const hourlyChart = document.getElementById("hourly-chart");
 const sessionsTbody = document.getElementById("sessions-tbody");
 const eventsTbody = document.getElementById("events-tbody");
-const linkExportEvents = document.getElementById("link-export-events");
 
 /**
  * Formats seconds into HH:MM:SS or MM:SS
@@ -46,25 +46,36 @@ function formatSeconds(totalSeconds, includeHours = false) {
     if (!totalSeconds || isNaN(totalSeconds) || totalSeconds < 0) {
         return includeHours ? "00:00:00" : "00:00";
     }
+
     const sec = Math.floor(totalSeconds % 60);
     const min = Math.floor((totalSeconds / 60) % 60);
     const hrs = Math.floor(totalSeconds / 3600);
-
     const pad = (n) => String(n).padStart(2, "0");
 
     if (includeHours || hrs > 0) {
         return `${pad(hrs)}:${pad(min)}:${pad(sec)}`;
     }
+
     return `${pad(min)}:${pad(sec)}`;
 }
 
 /**
- * Formats seconds into human-readable "Xh Ym"
+ * Formats seconds into human-readable duration
  */
 function formatHumanDuration(seconds) {
-    if (!seconds || isNaN(seconds) || seconds < 0) return "0h 0m";
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
+    if (seconds === null || seconds === undefined || isNaN(seconds) || seconds < 0) {
+        return "0h 0m";
+    }
+
+    const totalSeconds = Math.floor(seconds);
+
+    if (totalSeconds < 60) {
+        return `${totalSeconds}s`;
+    }
+
+    const hrs = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+
     return `${hrs}h ${mins}m`;
 }
 
@@ -74,43 +85,67 @@ function formatHumanDuration(seconds) {
 function getTodayDateString() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, "0");
+
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /**
- * Shows lightweight non-blocking toast notifications
+ * Shows lightweight toast notifications
  */
 function showToast(message, type = "info") {
     const container = document.getElementById("toast-container");
     if (!container) return;
+
     const toast = document.createElement("div");
     toast.className = `toast toast-${type}`;
     toast.textContent = message;
+
     container.appendChild(toast);
 
     setTimeout(() => {
         toast.style.opacity = "0";
         toast.style.transition = "opacity 0.3s ease-out";
+
         setTimeout(() => toast.remove(), 300);
     }, 3500);
+}
+
+/**
+ * Safely reads JSON responses from the server
+ */
+async function readJsonResponse(response) {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!contentType.includes("application/json")) {
+        throw new Error("The server returned an unexpected response.");
+    }
+
+    return await response.json();
 }
 
 /**
  * Start Monitoring Handler
  */
 async function startMonitoring() {
+    if (!btnStart || !btnStop) return;
+
     btnStart.disabled = true;
+
     try {
         const response = await fetch("/api/start", { method: "POST" });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (response.ok && data.success) {
             showToast("Monitoring initialized successfully.", "success");
+
             btnStop.disabled = false;
+
             const streamImg = document.getElementById("video-stream");
+
             if (streamImg) {
                 streamImg.src = `/video_feed?t=${Date.now()}`;
             }
+
             updateTelemetryUI(data.telemetry);
             fetchEvents();
             fetchSessions();
@@ -120,7 +155,7 @@ async function startMonitoring() {
             btnStart.disabled = false;
         }
     } catch (err) {
-        showToast("Network error communicating with server.", "error");
+        showToast(err.message || "Network error communicating with server.", "error");
         btnStart.disabled = false;
     }
 }
@@ -129,18 +164,25 @@ async function startMonitoring() {
  * Stop Monitoring Handler
  */
 async function stopMonitoring() {
+    if (!btnStart || !btnStop) return;
+
     btnStop.disabled = true;
+
     try {
         const response = await fetch("/api/stop", { method: "POST" });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (response.ok && data.success) {
             showToast("Monitoring stopped. Camera hardware released.", "info");
+
             btnStart.disabled = false;
+
             const streamImg = document.getElementById("video-stream");
+
             if (streamImg) {
                 streamImg.src = `/video_feed?t=${Date.now()}`;
             }
+
             updateTelemetryUI(data.telemetry);
             fetchEvents();
             fetchSessions();
@@ -150,7 +192,7 @@ async function stopMonitoring() {
             btnStop.disabled = false;
         }
     } catch (err) {
-        showToast("Network error communicating with server.", "error");
+        showToast(err.message || "Network error communicating with server.", "error");
         btnStop.disabled = false;
     }
 }
@@ -161,13 +203,16 @@ async function stopMonitoring() {
 async function takeBreak() {
     try {
         const response = await fetch("/api/break/take", { method: "POST" });
-        const data = await response.json();
-        if (data.success) {
-            showToast("Break started. Enjoy your rest!", "success");
-            fetchStatus();
+        const data = await readJsonResponse(response);
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || "Unable to start break.");
         }
+
+        showToast("Break started. Enjoy your rest!", "success");
+        fetchStatus();
     } catch (err) {
-        showToast("Error starting break.", "error");
+        showToast(err.message || "Error starting break.", "error");
     }
 }
 
@@ -178,329 +223,462 @@ async function snoozeBreak(minutes = 5) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ minutes })
         });
-        const data = await response.json();
-        if (data.success) {
-            showToast(`Break reminder snoozed for ${minutes} minutes.`, "info");
-            fetchStatus();
+
+        const data = await readJsonResponse(response);
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || "Unable to snooze reminder.");
         }
+
+        showToast(`Break reminder snoozed for ${minutes} minutes.`, "info");
+        fetchStatus();
     } catch (err) {
-        showToast("Error snoozing break.", "error");
+        showToast(err.message || "Error snoozing break.", "error");
     }
 }
 
 async function dismissBreak() {
     try {
         const response = await fetch("/api/break/dismiss", { method: "POST" });
-        const data = await response.json();
-        if (data.success) {
-            showToast("Break reminder dismissed. Focus cycle reset.", "info");
-            fetchStatus();
+        const data = await readJsonResponse(response);
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || "Unable to dismiss reminder.");
         }
+
+        showToast("Break reminder dismissed. Focus cycle reset.", "info");
+        fetchStatus();
     } catch (err) {
-        showToast("Error dismissing break.", "error");
+        showToast(err.message || "Error dismissing break.", "error");
     }
 }
 
 /**
- * Polls /api/status and updates DOM telemetry
+ * Polling functions
  */
 async function fetchStatus() {
     try {
         const response = await fetch("/api/status");
+
         if (!response.ok) return;
-        const data = await response.json();
+
+        const data = await readJsonResponse(response);
+
         if (data.success && data.telemetry) {
             updateTelemetryUI(data.telemetry);
         }
     } catch (err) {
-        // Silently skip transient drops
+        // Skip temporary network errors.
     }
 }
 
-/**
- * Polls /api/events and renders CSV event log
- */
 async function fetchEvents() {
     try {
         const response = await fetch("/api/events?limit=8");
+
         if (!response.ok) return;
-        const data = await response.json();
+
+        const data = await readJsonResponse(response);
+
         if (data.success && Array.isArray(data.events)) {
             renderEventsTable(data.events);
         }
     } catch (err) {
-        // Silently skip transient drops
+        // Skip temporary network errors.
     }
 }
 
-/**
- * Polls /api/sessions and renders recent sessions table
- */
 async function fetchSessions() {
     try {
         const response = await fetch("/api/sessions?limit=6");
+
         if (!response.ok) return;
-        const data = await response.json();
+
+        const data = await readJsonResponse(response);
+
         if (data.success && Array.isArray(data.sessions)) {
             renderSessionsTable(data.sessions);
         }
     } catch (err) {
-        // Silently skip transient drops
+        // Skip temporary network errors.
     }
 }
 
-/**
- * Polls /api/analytics and updates daily metrics and 24-hr CSS chart
- */
 async function fetchAnalytics() {
     try {
         const response = await fetch("/api/analytics");
+
         if (!response.ok) return;
-        const data = await response.json();
+
+        const data = await readJsonResponse(response);
+
         if (data.success && data.analytics) {
             renderAnalytics(data.analytics);
         }
     } catch (err) {
-        // Silently skip transient drops
+        // Skip temporary network errors.
     }
 }
 
 /**
- * Updates UI controls and metric cards with fresh telemetry
+ * Updates UI controls and metric cards
  */
 function updateTelemetryUI(t) {
     if (!t) return;
 
-    // Button states
-    if (t.monitoring) {
-        btnStart.disabled = true;
-        btnStop.disabled = false;
-    } else {
-        btnStart.disabled = false;
-        btnStop.disabled = true;
+    if (btnStart && btnStop) {
+        if (t.monitoring) {
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+        } else {
+            btnStart.disabled = false;
+            btnStop.disabled = true;
+        }
     }
 
-    // Camera Active Pill
-    if (t.camera_active) {
-        cameraPill.className = "status-pill pill-active";
-        cameraStatusText.textContent = "Camera Live";
-    } else {
-        cameraPill.className = "status-pill pill-stopped";
-        cameraStatusText.textContent = "Camera Off";
+    if (cameraPill && cameraStatusText) {
+        if (t.camera_active) {
+            cameraPill.className = "status-pill pill-active";
+            cameraStatusText.textContent = "Camera Live";
+        } else {
+            cameraPill.className = "status-pill pill-stopped";
+            cameraStatusText.textContent = "Camera Off";
+        }
     }
 
-    // Status Badge & Stream Overlay
     const status = t.status || "STOPPED";
+
     const statusClasses = {
-        "PRESENT": "badge-present",
-        "ABSENT": "badge-absent",
-        "INITIALIZING": "badge-initializing",
-        "STOPPED": "badge-stopped"
+        PRESENT: "badge-present",
+        ABSENT: "badge-absent",
+        INITIALIZING: "badge-initializing",
+        STOPPED: "badge-stopped"
     };
+
     const badgeClass = statusClasses[status] || "badge-stopped";
 
-    mainStatusBadge.className = `hero-badge ${badgeClass}`;
-    mainStatusBadge.textContent = status;
-
-    streamOverlayBadge.className = `stream-badge ${badgeClass}`;
-    streamOverlayBadge.textContent = status;
-
-    // Status Hints
-    if (status === "PRESENT") {
-        statusHint.textContent = "User face detected within workspace boundary.";
-    } else if (status === "ABSENT") {
-        statusHint.textContent = "No face detected in workspace for > 3.0s.";
-    } else if (status === "INITIALIZING") {
-        statusHint.textContent = "Calibrating workspace and checking presence grace period...";
-    } else {
-        statusHint.textContent = "Monitoring is currently stopped. Click 'Start Monitoring' to begin.";
+    if (mainStatusBadge) {
+        mainStatusBadge.className = `hero-badge ${badgeClass}`;
+        mainStatusBadge.textContent = status;
     }
 
-    // Metrics
-    stateTimer.textContent = `In State: ${formatSeconds(t.current_state_duration_seconds)}`;
-    statFaces.textContent = t.faces_detected || 0;
-    statSession.textContent = formatSeconds(t.session_duration_seconds, true);
-    statPresentTime.textContent = formatSeconds(t.total_present_seconds);
-    statAbsentTime.textContent = formatSeconds(t.total_absent_seconds);
+    if (streamOverlayBadge) {
+        streamOverlayBadge.className = `stream-badge ${badgeClass}`;
+        streamOverlayBadge.textContent = status;
+    }
 
-    // Break Reminder UI
+    if (statusHint) {
+        if (status === "PRESENT") {
+            statusHint.textContent = "User face detected within workspace boundary.";
+        } else if (status === "ABSENT") {
+            statusHint.textContent = "No face detected in workspace for > 3.0s.";
+        } else if (status === "INITIALIZING") {
+            statusHint.textContent = "Calibrating workspace and checking presence grace period...";
+        } else {
+            statusHint.textContent = "Monitoring is currently stopped. Click 'Start Monitoring' to begin.";
+        }
+    }
+
+    if (stateTimer) {
+        stateTimer.textContent = `In State: ${formatSeconds(t.current_state_duration_seconds)}`;
+    }
+
+    if (statFaces) statFaces.textContent = t.faces_detected || 0;
+
+    if (statSession) {
+        statSession.textContent = formatSeconds(t.session_duration_seconds, true);
+    }
+
+    if (statPresentTime) {
+        statPresentTime.textContent = formatSeconds(t.total_present_seconds);
+    }
+
+    if (statAbsentTime) {
+        statAbsentTime.textContent = formatSeconds(t.total_absent_seconds);
+    }
+
     if (t.break_reminder) {
         updateBreakUI(t.break_reminder);
     }
 }
 
 /**
- * Updates Break Reminder Banner & Progress Bar
+ * Updates Break Reminder UI
  */
 function updateBreakUI(b) {
-    breakStateTag.textContent = b.state;
+    if (!b) return;
 
-    // Progress Bar
-    const curSec = b.current_work_seconds || 0;
-    const targetSec = b.work_interval_seconds || 2700;
-    const pct = Math.min(100, Math.round((curSec / targetSec) * 100));
-    workProgressFill.style.width = `${pct}%`;
-    workTimerText.textContent = `${formatSeconds(curSec)} / ${formatSeconds(targetSec)}`;
+    if (breakStateTag) {
+        breakStateTag.textContent = b.state || "IDLE";
+    }
 
-    // Banner visibility
-    if (b.reminder_active) {
-        breakBanner.classList.remove("hidden");
-        breakBannerTitle.textContent = "Time for a Healthy Break!";
-        const mins = Math.max(1, Math.round(curSec / 60));
-        breakBannerDesc.textContent = `You've been focused and working for ${mins} minutes. Take a 5-minute break to rest your eyes and stretch.`;
-    } else if (b.state === "ON_BREAK") {
-        breakBanner.classList.remove("hidden");
-        breakBannerTitle.textContent = `Break in Progress: ${formatSeconds(b.remaining_break_seconds)} remaining`;
-        breakBannerDesc.textContent = "Step away from the screen, hydrate, and stretch. Focus tracking will resume when your break completes.";
-    } else {
-        breakBanner.classList.add("hidden");
+    const curSec = Number(b.current_work_seconds) || 0;
+    const targetSec = Number(b.work_interval_seconds) || 2700;
+    const pct = Math.min(100, Math.max(0, Math.round((curSec / targetSec) * 100)));
+
+    if (workProgressFill) {
+        workProgressFill.style.width = `${pct}%`;
+    }
+
+    if (workTimerText) {
+        workTimerText.textContent = `${formatSeconds(curSec)} / ${formatSeconds(targetSec)}`;
+    }
+
+    if (breakBanner) {
+        if (b.reminder_active) {
+            breakBanner.classList.remove("hidden");
+
+            if (breakBannerTitle) {
+                breakBannerTitle.textContent = "Time for a Healthy Break!";
+            }
+
+            if (breakBannerDesc) {
+                const mins = Math.max(1, Math.round(curSec / 60));
+                breakBannerDesc.textContent =
+                    `You've been focused and working for ${mins} minutes. Take a 5-minute break to rest your eyes and stretch.`;
+            }
+        } else if (b.state === "ON_BREAK") {
+            breakBanner.classList.remove("hidden");
+
+            if (breakBannerTitle) {
+                breakBannerTitle.textContent =
+                    `Break in Progress: ${formatSeconds(b.remaining_break_seconds)} remaining`;
+            }
+
+            if (breakBannerDesc) {
+                breakBannerDesc.textContent =
+                    "Step away from the screen, hydrate, and stretch. Focus tracking will resume when your break completes.";
+            }
+        } else {
+            breakBanner.classList.add("hidden");
+        }
     }
 }
 
 /**
- * Renders Daily Analytics metrics and 24-hour pure CSS chart
+ * Renders Daily Analytics and 24-hour chart
  */
 function renderAnalytics(a) {
     if (!a) return;
 
-    analyticTotalMonitored.textContent = formatHumanDuration(a.total_monitored_seconds);
-    analyticTimePresent.textContent = formatHumanDuration(a.total_present_seconds);
-    analyticTimeAbsent.textContent = formatHumanDuration(a.total_absent_seconds);
-    analyticFocusRatio.textContent = `${a.focus_ratio_percent}%`;
+    if (analyticTotalMonitored) {
+        analyticTotalMonitored.textContent =
+            formatHumanDuration(a.total_monitored_seconds);
+    }
 
-    // Render 24-hour bar chart
+    if (analyticTimePresent) {
+        analyticTimePresent.textContent =
+            formatHumanDuration(a.total_present_seconds);
+    }
+
+    if (analyticTimeAbsent) {
+        analyticTimeAbsent.textContent =
+            formatHumanDuration(a.total_absent_seconds);
+    }
+
+    if (analyticFocusRatio) {
+        analyticFocusRatio.textContent =
+            `${Number(a.focus_ratio_percent) || 0}%`;
+    }
+
     if (Array.isArray(a.hourly_activity) && hourlyChart) {
-        let html = "";
-        a.hourly_activity.forEach((sec, hour) => {
-            const minutes = sec / 60.0;
-            // Max height is 60 minutes in an hour
-            const heightPct = Math.min(100, Math.max(3, (minutes / 60.0) * 100));
-            const padH = String(hour).padStart(2, "0");
-            const tooltip = `${padH}:00 - ${minutes.toFixed(1)}m present`;
+        hourlyChart.replaceChildren();
 
-            html += `
-                <div class="chart-bar-wrapper" data-tooltip="${tooltip}">
-                    <div class="chart-bar" style="height: ${heightPct}%;"></div>
-                </div>
-            `;
+        a.hourly_activity.forEach((sec, hour) => {
+            const safeSeconds = Math.max(0, Number(sec) || 0);
+            const minutes = safeSeconds / 60;
+            const heightPct = Math.min(100, Math.max(3, (minutes / 60) * 100));
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "chart-bar-wrapper";
+            wrapper.dataset.tooltip =
+                `${String(hour).padStart(2, "0")}:00 - ${minutes.toFixed(1)}m present`;
+
+            const bar = document.createElement("div");
+            bar.className = "chart-bar";
+            bar.style.height = `${heightPct}%`;
+
+            wrapper.appendChild(bar);
+            hourlyChart.appendChild(wrapper);
         });
-        hourlyChart.innerHTML = html;
     }
 }
 
 /**
- * Renders Session History table rows
+ * Renders Session History table safely
  */
 function renderSessionsTable(sessions) {
+    if (!sessionsTbody) return;
+
+    sessionsTbody.replaceChildren();
+
     if (!sessions || sessions.length === 0) {
-        sessionsTbody.innerHTML = `<tr><td colspan="6" class="empty-state">No sessions recorded yet.</td></tr>`;
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+
+        cell.colSpan = 6;
+        cell.className = "empty-state";
+        cell.textContent = "No sessions recorded yet.";
+
+        row.appendChild(cell);
+        sessionsTbody.appendChild(row);
         return;
     }
 
-    let html = "";
     sessions.forEach(s => {
-        const dur = s.duration_seconds ? formatSeconds(parseFloat(s.duration_seconds)) : "-";
-        const pres = s.present_seconds ? formatSeconds(parseFloat(s.present_seconds)) : "-";
+        const row = document.createElement("tr");
+
+        const dur = s.duration_seconds
+            ? formatSeconds(parseFloat(s.duration_seconds))
+            : "-";
+
+        const pres = s.present_seconds
+            ? formatSeconds(parseFloat(s.present_seconds))
+            : "-";
+
         let badgeClass = "event-absent";
+
         if (s.status === "COMPLETED") {
             badgeClass = "event-present";
         } else if (s.status === "STOPPED_EARLY") {
             badgeClass = "event-initializing";
         }
 
-        html += `
-            <tr>
-                <td style="font-family: monospace; font-size: 0.76rem;">${s.session_id || "-"}</td>
-                <td style="font-family: monospace;">${s.start_time || "-"}</td>
-                <td style="font-family: monospace;">${s.end_time || "-"}</td>
-                <td style="font-family: monospace;">${dur}</td>
-                <td style="font-family: monospace;" class="stat-success">${pres}</td>
-                <td><span class="event-badge ${badgeClass}">${s.status || "COMPLETED"}</span></td>
-            </tr>
-        `;
+        const values = [
+            s.session_id || "-",
+            s.start_time || "-",
+            s.end_time || "-",
+            dur,
+            pres
+        ];
+
+        values.forEach(value => {
+            const cell = document.createElement("td");
+            cell.style.fontFamily = "monospace";
+            cell.textContent = String(value);
+            row.appendChild(cell);
+        });
+
+        const statusCell = document.createElement("td");
+        const badge = document.createElement("span");
+
+        statusCell.style.fontFamily = "inherit";
+        badge.className = `event-badge ${badgeClass}`;
+        badge.textContent = s.status || "COMPLETED";
+
+        statusCell.appendChild(badge);
+        row.appendChild(statusCell);
+
+        sessionsTbody.appendChild(row);
     });
-    sessionsTbody.innerHTML = html;
 }
 
 /**
- * Renders CSV transition events table rows
+ * Renders CSV transition events safely
  */
 function renderEventsTable(events) {
+    if (!eventsTbody) return;
+
+    eventsTbody.replaceChildren();
+
     if (!events || events.length === 0) {
-        eventsTbody.innerHTML = `<tr><td colspan="4" class="empty-state">No events recorded yet.</td></tr>`;
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+
+        cell.colSpan = 4;
+        cell.className = "empty-state";
+        cell.textContent = "No events recorded yet.";
+
+        row.appendChild(cell);
+        eventsTbody.appendChild(row);
         return;
     }
 
-    let html = "";
     events.forEach(e => {
-        const isPresent = e.event_type === "PRESENT";
-        const badgeClass = isPresent ? "event-present" : "event-absent";
-        const durationFormatted = e.duration_seconds ? `${parseFloat(e.duration_seconds).toFixed(1)}s` : "-";
+        const row = document.createElement("tr");
 
-        html += `
-            <tr>
-                <td style="font-family: monospace;">${e.timestamp || "-"}</td>
-                <td><span class="event-badge ${badgeClass}">${e.event_type}</span></td>
-                <td style="font-family: monospace;">${durationFormatted}</td>
-                <td>${e.details || "-"}</td>
-            </tr>
-        `;
+        const timestampCell = document.createElement("td");
+        timestampCell.style.fontFamily = "monospace";
+        timestampCell.textContent = e.timestamp || "-";
+
+        const typeCell = document.createElement("td");
+        const badge = document.createElement("span");
+
+        const isPresent = e.event_type === "PRESENT";
+        badge.className = `event-badge ${isPresent ? "event-present" : "event-absent"}`;
+        badge.textContent = e.event_type || "UNKNOWN";
+
+        typeCell.appendChild(badge);
+
+        const durationCell = document.createElement("td");
+        durationCell.style.fontFamily = "monospace";
+        durationCell.textContent = e.duration_seconds
+            ? `${parseFloat(e.duration_seconds).toFixed(1)}s`
+            : "-";
+
+        const detailsCell = document.createElement("td");
+        detailsCell.textContent = e.details || "-";
+
+        row.append(
+            timestampCell,
+            typeCell,
+            durationCell,
+            detailsCell
+        );
+
+        eventsTbody.appendChild(row);
     });
-    eventsTbody.innerHTML = html;
 }
 
 /**
- * Exports CSV events filtered by selected date picker value
+ * Exports CSV events filtered by selected date
  */
 function exportEventsCsv() {
     const picker = document.getElementById("export-date-picker");
     const dateVal = picker ? picker.value : "";
+
     if (dateVal) {
-        window.location.href = `/api/export/events?date=${encodeURIComponent(dateVal)}`;
+        window.location.href =
+            `/api/export/events?date=${encodeURIComponent(dateVal)}`;
     } else {
         window.location.href = "/api/export/events";
     }
 }
 
 /**
- * Updates analytics date tag with localized date string
+ * Exports session history filtered by selected date
  */
-function updateAnalyticsDateTag() {
-    const analyticsDateTag = document.getElementById("analytics-date-tag");
-    if (analyticsDateTag) {
-        const today = new Date();
-        analyticsDateTag.textContent = today.toLocaleDateString(undefined, {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            year: "numeric"
-        });
+function exportSessionsCsv() {
+    const picker = document.getElementById("export-date-picker");
+    const dateVal = picker ? picker.value : "";
+
+    if (dateVal) {
+        window.location.href =
+            `/api/export/sessions?date=${encodeURIComponent(dateVal)}`;
+    } else {
+        window.location.href = "/api/export/sessions";
     }
 }
 
-// Initialize Polling & Export Controls on Page Load
-window.addEventListener("DOMContentLoaded", () => {
-    // Initialize date picker and localized tag
-    const todayStr = getTodayDateString();
-    const exportDatePicker = document.getElementById("export-date-picker");
-    if (exportDatePicker) {
-        exportDatePicker.value = todayStr;
+/**
+ * Initializes dashboard
+ */
+document.addEventListener("DOMContentLoaded", () => {
+    const picker = document.getElementById("export-date-picker");
+
+    if (picker) {
+        picker.value = getTodayDateString();
     }
-    if (linkExportEvents) {
-        linkExportEvents.href = `/api/export/events?date=${todayStr}`;
-    }
-    updateAnalyticsDateTag();
 
     fetchStatus();
     fetchEvents();
     fetchSessions();
     fetchAnalytics();
 
-    // Lightweight polling intervals: 1000ms status, 2500ms events, 5000ms analytics & sessions
     statusPollingInterval = setInterval(fetchStatus, 1000);
     eventsPollingInterval = setInterval(fetchEvents, 2500);
     analyticsPollingInterval = setInterval(() => {
-        fetchSessions();
         fetchAnalytics();
+        fetchSessions();
     }, 5000);
 });

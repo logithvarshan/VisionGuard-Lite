@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +9,7 @@
 </head>
 <body>
     <div class="app-layout">
+
         <!-- Top Navigation Bar -->
         <header class="app-header">
             <div class="brand">
@@ -17,11 +19,13 @@
                     <span class="subtitle">AI-Powered Smart Workspace Monitoring System</span>
                 </div>
             </div>
+
             <div class="header-badges">
                 <div id="camera-pill" class="status-pill pill-stopped">
                     <span class="pulse-dot"></span>
                     <span id="camera-status-text">Camera Off</span>
                 </div>
+
                 <div class="privacy-pill">
                     <span class="icon">🔒</span>
                     <span>100% Local</span>
@@ -29,39 +33,66 @@
             </div>
         </header>
 
-        <!-- Smart Break Reminder Banner (Hidden by default) -->
+        <!-- Smart Break Reminder Banner -->
         <section id="break-banner" class="break-banner hidden">
             <div class="break-banner-content">
                 <div class="break-icon">☕</div>
+
                 <div class="break-text">
                     <h3 id="break-banner-title">Time for a Healthy Break!</h3>
-                    <p id="break-banner-desc">You've been focused and working for 45 minutes. Take a moment to stretch and rest your eyes.</p>
+                    <p id="break-banner-desc">
+                        You've been focused and working for 45 minutes.
+                        Take a moment to stretch and rest your eyes.
+                    </p>
                 </div>
             </div>
+
             <div class="break-banner-actions">
-                <button id="btn-take-break" class="btn btn-break-take" onclick="takeBreak()">Take 5m Break</button>
-                <button id="btn-snooze-break" class="btn btn-break-snooze" onclick="snoozeBreak(5)">Snooze (5m)</button>
-                <button id="btn-dismiss-break" class="btn btn-break-dismiss" onclick="dismissBreak()">Dismiss</button>
+                <button id="btn-take-break" class="btn btn-break-take" onclick="takeBreak()">
+                    Take 5m Break
+                </button>
+
+                <button id="btn-snooze-break" class="btn btn-break-snooze" onclick="snoozeBreak(5)">
+                    Snooze (5m)
+                </button>
+
+                <button id="btn-dismiss-break" class="btn btn-break-dismiss" onclick="dismissBreak()">
+                    Dismiss
+                </button>
             </div>
         </section>
 
         <!-- Main Dashboard Grid -->
         <main class="dashboard-grid">
+
             <!-- Left Panel: Video Stream & Controls -->
             <section class="video-panel">
+
                 <div class="card stream-card">
                     <div class="card-header">
                         <h2>Live Workspace Feed</h2>
                         <span class="tag">320 × 240 Native</span>
                     </div>
+
                     <div class="stream-container">
-                        <img id="video-stream" src="/video_feed" alt="Live MJPEG Stream" width="320" height="240">
-                        <div id="stream-overlay-badge" class="stream-badge badge-stopped">STOPPED</div>
+                        <img
+                            id="video-stream"
+                            src="/video_feed"
+                            alt="Live MJPEG Stream"
+                            width="320"
+                            height="240"
+                        >
+
+                        <div id="stream-overlay-badge" class="stream-badge badge-stopped">
+                            STOPPED
+                        </div>
                     </div>
+
                     <div class="control-actions">
                         <button id="btn-start" class="btn btn-primary" onclick="startMonitoring()">
                             <span class="btn-icon">▶</span> Start Monitoring
                         </button>
+
                         <button id="btn-stop" class="btn btn-secondary" onclick="stopMonitoring()" disabled>
                             <span class="btn-icon">⏹</span> Stop Monitoring
                         </button>
@@ -74,11 +105,13 @@
                         <h3>Break Interval Tracker</h3>
                         <span id="break-state-tag" class="tag">WORKING</span>
                     </div>
+
                     <div class="break-progress-info">
                         <div class="progress-labels">
                             <span>Focus Time</span>
                             <span id="work-timer-text">00:00 / 45:00</span>
                         </div>
+
                         <div class="progress-bar-bg">
                             <div id="work-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
                         </div>
@@ -91,74 +124,108 @@
                         <h3>Export Local Reports</h3>
                         <span class="tag">CSV</span>
                     </div>
+
                     <div class="export-actions">
                         <div class="export-date-group">
-                            <label for="export-date-picker" class="export-label">Date:</label>
-                            <input type="date" id="export-date-picker" class="date-input">
+                            <label for="export-date-picker" class="export-label">
+                                Date:
+                            </label>
+
+                            <input
+                                type="date"
+                                id="export-date-picker"
+                                class="date-input"
+                            >
                         </div>
-                        <button id="btn-export-events" class="btn btn-outline" onclick="exportEventsCsv()">
+
+                        <button
+                            id="btn-export-events"
+                            class="btn btn-outline"
+                            onclick="exportEventsCsv()"
+                        >
                             📥 Export Events (CSV)
                         </button>
-                        <a href="/api/export/sessions" class="btn btn-outline" download>
-                            📥 Session History (CSV)
-                        </a>
+
+                        <button
+                            id="btn-export-sessions"
+                            class="btn btn-outline"
+                            onclick="exportSessionsCsv()"
+                        >
+                            📥 Export Sessions (CSV)
+                        </button>
                     </div>
                 </div>
 
                 <!-- Privacy & Architecture Notice Card -->
                 <div class="card privacy-card">
                     <h3>Privacy & Security Guarantee</h3>
+
                     <ul>
                         <li>Frames processed strictly in-memory using OpenCV Haar Cascades.</li>
                         <li>No video or webcam photos are ever saved to disk or network.</li>
                         <li>Camera hardware fully shuts down when monitoring is stopped.</li>
                     </ul>
                 </div>
+
             </section>
 
             <!-- Right Panel: Telemetry, Analytics & History -->
             <section class="metrics-panel">
+
                 <!-- Primary Status Hero Card -->
                 <div class="card status-hero-card">
                     <div class="status-hero-header">
                         <span class="label">CURRENT WORKSPACE STATUS</span>
                         <span id="state-timer" class="time-in-state">00:00</span>
                     </div>
+
                     <div class="status-hero-body">
                         <div id="main-status-badge" class="hero-badge badge-stopped">
                             STOPPED
                         </div>
-                        <p id="status-hint" class="status-hint">Click 'Start Monitoring' to activate camera detection.</p>
+
+                        <p id="status-hint" class="status-hint">
+                            Click 'Start Monitoring' to activate camera detection.
+                        </p>
                     </div>
                 </div>
 
                 <!-- Live Session Stats 2x2 Grid -->
                 <div class="stats-grid">
+
                     <div class="card stat-card">
                         <span class="stat-label">Faces Detected</span>
+
                         <div class="stat-value-group">
                             <span id="stat-faces" class="stat-value">0</span>
                             <span class="stat-unit">active</span>
                         </div>
                     </div>
+
                     <div class="card stat-card">
                         <span class="stat-label">Session Duration</span>
+
                         <div class="stat-value-group">
                             <span id="stat-session" class="stat-value">00:00:00</span>
                         </div>
                     </div>
+
                     <div class="card stat-card">
                         <span class="stat-label">Session Present</span>
+
                         <div class="stat-value-group">
                             <span id="stat-present-time" class="stat-value stat-success">00:00</span>
                         </div>
                     </div>
+
                     <div class="card stat-card">
                         <span class="stat-label">Session Absent</span>
+
                         <div class="stat-value-group">
                             <span id="stat-absent-time" class="stat-value stat-warning">00:00</span>
                         </div>
                     </div>
+
                 </div>
 
                 <!-- Daily Analytics & Activity Summary Card -->
@@ -167,23 +234,29 @@
                         <h2>Today's Activity Analytics</h2>
                         <span id="analytics-date-tag" class="tag">Today</span>
                     </div>
+
                     <div class="analytics-metrics-grid">
+
                         <div class="analytics-mini-stat">
                             <span class="mini-label">Total Monitored</span>
                             <span id="analytic-total-monitored" class="mini-value">0h 0m</span>
                         </div>
+
                         <div class="analytics-mini-stat">
                             <span class="mini-label">Time Present</span>
                             <span id="analytic-time-present" class="mini-value stat-success">0h 0m</span>
                         </div>
+
                         <div class="analytics-mini-stat">
                             <span class="mini-label">Time Absent</span>
                             <span id="analytic-time-absent" class="mini-value stat-warning">0h 0m</span>
                         </div>
+
                         <div class="analytics-mini-stat">
                             <span class="mini-label">Focus Ratio</span>
                             <span id="analytic-focus-ratio" class="mini-value stat-focus">0.0%</span>
                         </div>
+
                     </div>
 
                     <!-- 24-Hour Pure CSS Activity Distribution Chart -->
@@ -192,9 +265,11 @@
                             <span class="chart-title">24-Hour Presence Distribution</span>
                             <span class="chart-legend">Minutes Present per Hour</span>
                         </div>
+
                         <div id="hourly-chart" class="hourly-chart">
                             <!-- Populated dynamically with 24 hourly CSS bars -->
                         </div>
+
                         <div class="chart-axis-labels">
                             <span>00:00</span>
                             <span>06:00</span>
@@ -211,6 +286,7 @@
                         <h2>Session History</h2>
                         <span class="tag">Recent Sessions</span>
                     </div>
+
                     <div class="table-container">
                         <table class="events-table">
                             <thead>
@@ -223,9 +299,12 @@
                                     <th>Status</th>
                                 </tr>
                             </thead>
+
                             <tbody id="sessions-tbody">
                                 <tr>
-                                    <td colspan="6" class="empty-state">No sessions recorded yet.</td>
+                                    <td colspan="6" class="empty-state">
+                                        No sessions recorded yet.
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -238,6 +317,7 @@
                         <h2>Recent Transitions Log</h2>
                         <span class="tag">CSV Recorded</span>
                     </div>
+
                     <div class="table-container">
                         <table class="events-table">
                             <thead>
@@ -248,19 +328,24 @@
                                     <th>Details</th>
                                 </tr>
                             </thead>
+
                             <tbody id="events-tbody">
                                 <tr>
-                                    <td colspan="4" class="empty-state">No events recorded yet.</td>
+                                    <td colspan="4" class="empty-state">
+                                        No events recorded yet.
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
+
             </section>
         </main>
 
         <!-- Toast Notifications Container -->
         <div id="toast-container" class="toast-container"></div>
+
     </div>
 
     <script src="/static/js/dashboard.js"></script>
